@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>cc bridge</title>
+<link rel="manifest" href="data:application/manifest+json,{&quot;name&quot;:&quot;cc bridge&quot;,&quot;display&quot;:&quot;standalone&quot;}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+<style>
+  :root {
+    --bg: #F1F5F9; --card: #fff; --ink: #0F172A; --muted: #64748B;
+    --primary: #1E40AF; --accent: #3B82F6; --line: #E2E8F0;
+    --ok: #16A34A; --warn: #D97706; --err: #DC2626;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif;
+    background: var(--bg); color: var(--ink); display: flex; flex-direction: column;
+  }
+  header {
+    background: var(--primary); color: #fff; padding: 10px 14px;
+    padding-top: calc(10px + env(safe-area-inset-top));
+    display: flex; align-items: center; gap: 10px;
+  }
+  header h1 { font-size: 16px; margin: 0; flex: 1; }
+  header .dot { width: 9px; height: 9px; border-radius: 50%; background: #94A3B8; }
+  header .dot.ok { background: #4ADE80; } header .dot.err { background: #F87171; }
+  header small { opacity: .8; font-size: 11px; }
+  header button { background: transparent; border: 1px solid rgba(255,255,255,.5); color: #fff;
+    border-radius: 6px; padding: 4px 8px; font-size: 13px; }
+  #log { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .row { display: flex; flex-direction: column; }
+  .row.me { align-items: flex-end; }
+  .row.cc { align-items: flex-start; }
+  .bubble { max-width: 88%; padding: 9px 12px; border-radius: 14px; font-size: 15px; line-height: 1.5;
+    word-wrap: break-word; overflow-wrap: anywhere; }
+  .me .bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; white-space: pre-wrap; }
+  .cc .bubble { background: var(--card); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+  .cc .bubble.err { border-color: var(--err); }
+  .meta { font-size: 11px; color: var(--muted); margin: 2px 4px; }
+  .control { align-self: center; font-size: 12px; color: var(--muted); background: #E2E8F0;
+    padding: 3px 10px; border-radius: 10px; }
+  .status { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 14px; }
+  .spin { width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent);
+    border-radius: 50%; animation: s 1s linear infinite; }
+  @keyframes s { to { transform: rotate(360deg); } }
+  .bubble pre { background: #0F172A; color: #E2E8F0; padding: 8px; border-radius: 6px; overflow-x: auto; font-size: 12.5px; }
+  .bubble code { font-family: ui-monospace, Consolas, monospace; font-size: .9em; }
+  .bubble :not(pre) > code { background: #F1F5F9; padding: 1px 4px; border-radius: 4px; }
+  .bubble table { border-collapse: collapse; display: block; overflow-x: auto; font-size: 13px; }
+  .bubble th, .bubble td { border: 1px solid var(--line); padding: 4px 6px; }
+  .bubble p { margin: .3em 0; } .bubble ul, .bubble ol { padding-left: 1.3em; margin: .3em 0; }
+  .bubble h1, .bubble h2, .bubble h3 { font-size: 1.05em; margin: .5em 0 .3em; }
+  footer { background: var(--card); border-top: 1px solid var(--line); padding: 8px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  .tools { display: flex; gap: 6px; margin-bottom: 6px; }
+  .tools button { font-size: 12px; padding: 4px 10px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink); }
+  .compose { display: flex; gap: 6px; align-items: flex-end; }
+  textarea { flex: 1; resize: none; border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px;
+    font: inherit; font-size: 16px; max-height: 140px; min-height: 42px; }
+  textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  #send { background: var(--primary); color: #fff; border: 0; border-radius: 10px; padding: 0 16px;
+    height: 42px; font-size: 15px; }
+  #send:disabled { opacity: .5; }
+  dialog { border: 0; border-radius: 12px; padding: 18px; width: min(92vw, 420px); }
+  dialog::backdrop { background: rgba(15,23,42,.45); }
+  dialog label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  dialog input { width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 15px; }
+  dialog .btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  dialog .btns button { padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); }
+  dialog .btns .primary { background: var(--primary); color: #fff; border: 0; }
+  .hint { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .empty { margin: auto; text-align: center; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="dot"></span>
+  <h1>cc bridge <small id="sync"></small></h1>
+  <button id="btnSettings">設定</button>
+</header>
+
+<div id="log"><div class="empty">還沒有對話。<br>在下方輸入指令，電腦會用 Claude Code 執行。</div></div>
+
+<footer>
+  <div class="tools">
+    <button data-cmd="---new---">🆕 新對話</button>
+    <button data-cmd="清空">🧹 清空</button>
+  </div>
+  <div class="compose">
+    <textarea id="input" rows="1" placeholder="要電腦做什麼？"></textarea>
+    <button id="send">送出</button>
+  </div>
+</footer>
+
+<dialog id="dlg">
+  <h3 style="margin:0">設定</h3>
+  <label>GitHub token（fine-grained，只開 cc-bridge-channel 的 Contents 讀寫）</label>
+  <input id="token" type="password" autocomplete="off" placeholder="github_pat_...">
+  <label>Channel repo</label>
+  <input id="repo" placeholder="kaojia/cc-bridge-channel">
+  <p class="hint">token 只存在這支手機的瀏覽器（localStorage），不會上傳到其他地方。
+    拿到這把 token 的人等於能遙控你的電腦 —— 請設到期日，遺失就到 GitHub 撤銷。</p>
+  <div class="btns">
+    <button id="btnForget">清除 token</button>
+    <button id="btnCancel">取消</button>
+    <button id="btnSave" class="primary">儲存</button>
+  </div>
+</dialog>
+
+<script>
+const LS = { token: "ccb.token", repo: "ccb.repo", pending: "ccb.pending" };
+const BRANCH = "main";
+const POLL_MS = 6000;
+const $ = (id) => document.getElementById(id);
+
+let messages = [];
+let etag = null;
+let pending = JSON.parse(localStorage.getItem(LS.pending) || "[]");
+let lastRender = "";
+
+const cfg = () => ({
+  token: localStorage.getItem(LS.token) || "",
+  repo: localStorage.getItem(LS.repo) || "kaojia/cc-bridge-channel",
+});
+
+// ---------- GitHub API ----------
+function api(path, opts = {}) {
+  const { token, repo } = cfg();
+  return fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
+    cache: "no-store",
+    ...opts,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-GitHub-Api-Version": "2022-11-28",
+      ...(opts.headers || {}),
+    },
+  });
+}
+
+function b64decodeUtf8(b64) {
+  const bin = atob(b64.replace(/\n/g, ""));
+  return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+}
+function b64encodeUtf8(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+async function fetchMessages() {
+  const headers = { Accept: "application/vnd.github.raw+json" };
+  if (etag) headers["If-None-Match"] = etag;
+  const r = await api(`messages.json?ref=${BRANCH}&t=${Date.now()}`, { headers });
+  if (r.status === 304) return false;
+  if (r.status === 404) { messages = []; return true; }
+  if (!r.ok) throw new Error(`讀取失敗 ${r.status}`);
+  etag = r.headers.get("ETag");
+  messages = (JSON.parse(await r.text()).messages) || [];
+  return true;
+}
+
+async function appendInbox(line) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const g = await api(`inbox.md?ref=${BRANCH}&t=${Date.now()}`);
+    if (!g.ok) throw new Error(`讀 inbox 失敗 ${g.status}`);
+    const cur = await g.json();
+    let text = b64decodeUtf8(cur.content || "");
+    if (text && !text.endsWith("\n")) text += "\n";
+    const p = await api("inbox.md", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "web: " + line.slice(0, 40),
+        content: b64encodeUtf8(text + line + "\n"),
+        sha: cur.sha,
+        branch: BRANCH,
+      }),
+    });
+    if (p.ok) return;
+    if (p.status !== 409 && p.status !== 422) throw new Error(`寫入失敗 ${p.status}`);
+    await new Promise((res) => setTimeout(res, 800 + Math.random() * 1200)); // sha race -> retry
+  }
+  throw new Error("寫入衝突，請再送一次");
+}
+
+// ---------- UI ----------
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function md(s) { return DOMPurify.sanitize(marked.parse(String(s || ""))); }
+function hhmm(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return isNaN(d) ? "" : d.toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function render() {
+  const seen = new Set(messages.map((m) => m.id));
+  const before = pending.length;
+  pending = pending.filter((p) => !seen.has(p.id));
+  if (pending.length !== before) localStorage.setItem(LS.pending, JSON.stringify(pending));
+
+  const items = [
+    ...messages,
+    ...pending.map((p) => ({ ...p, status: "queued" })),
+  ];
+  const sig = JSON.stringify(items);
+  if (sig === lastRender) return;
+  lastRender = sig;
+
+  const log = $("log");
+  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+  if (!items.length) {
+    log.innerHTML = '<div class="empty">還沒有對話。<br>在下方輸入指令，電腦會用 Claude Code 執行。</div>';
+    return;
+  }
+  log.innerHTML = items.map((m) => {
+    if (m.kind === "control")
+      return `<div class="control">${esc(m.answer || m.cmd)} · ${hhmm(m.done_ts || m.ts)}</div>`;
+    let reply;
+    if (m.status === "queued")
+      reply = `<div class="status"><span class="spin"></span>已送出，等電腦接收…</div>`;
+    else if (m.status === "running")
+      reply = `<div class="status"><span class="spin"></span>執行中…</div>`;
+    else
+      reply = md(m.answer);
+    const errCls = m.status === "error" ? " err" : "";
+    return `<div class="row me"><div class="bubble">${esc(m.cmd)}</div><div class="meta">${hhmm(m.ts)}</div></div>
+            <div class="row cc"><div class="bubble${errCls}">${reply}</div>
+            ${m.done_ts ? `<div class="meta">${m.status === "error" ? "⚠ 錯誤 · " : ""}${hhmm(m.done_ts)}</div>` : ""}</div>`;
+  }).join("");
+  if (atBottom || items.length && items[items.length - 1].status === "queued") log.scrollTop = log.scrollHeight;
+}
+
+function setConn(ok, text) {
+  $("dot").className = "dot " + (ok ? "ok" : "err");
+  $("sync").textContent = text;
+}
+
+async function poll() {
+  if (!cfg().token) { setConn(false, "未設定 token"); return; }
+  try {
+    await fetchMessages();
+    render();
+    setConn(true, "已同步 " + new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+  } catch (e) {
+    setConn(false, e.message);
+  }
+}
+
+async function send(text) {
+  text = text.replace(/\s*\n\s*/g, " ").trim();   // inbox is one command per line
+  if (!text) return;
+  if (!cfg().token) { openSettings(); return; }
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const btn = $("send");
+  btn.disabled = true;
+  try {
+    await appendInbox(`[[id:${id}]] ${text}`);
+    if (!/^(---new---|清空)$/.test(text)) {
+      pending.push({ id, cmd: text, ts: new Date().toISOString() });
+      localStorage.setItem(LS.pending, JSON.stringify(pending));
+    }
+    render();
+    return true;
+  } catch (e) {
+    alert("送出失敗：" + e.message);
+    return false;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------- settings ----------
+function openSettings() {
+  $("token").value = cfg().token;
+  $("repo").value = cfg().repo;
+  $("dlg").showModal();
+}
+$("btnSettings").onclick = openSettings;
+$("btnCancel").onclick = () => $("dlg").close();
+$("btnSave").onclick = () => {
+  localStorage.setItem(LS.token, $("token").value.trim());
+  localStorage.setItem(LS.repo, $("repo").value.trim() || "kaojia/cc-bridge-channel");
+  etag = null;
+  $("dlg").close();
+  poll();
+};
+$("btnForget").onclick = () => {
+  localStorage.removeItem(LS.token);
+  $("token").value = "";
+  setConn(false, "未設定 token");
+};
+
+// ---------- compose ----------
+const input = $("input");
+input.addEventListener("input", () => {
+  input.style.height = "auto";
+  input.style.height = Math.min(input.scrollHeight, 140) + "px";
+});
+input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("send").click(); }
+});
+$("send").onclick = async () => {
+  if (await send(input.value)) { input.value = ""; input.style.height = "auto"; }
+};
+document.querySelectorAll("[data-cmd]").forEach((b) => {
+  b.onclick = () => {
+    if (b.dataset.cmd === "清空" && !confirm("清空所有對話紀錄？")) return;
+    send(b.dataset.cmd);
+  };
+});
+
+document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
+render();
+if (!cfg().token) openSettings();
+poll();
+setInterval(() => { if (!document.hidden) poll(); }, POLL_MS);
+</script>
+</body>
+</html>
